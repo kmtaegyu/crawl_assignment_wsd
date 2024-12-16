@@ -10,13 +10,14 @@ const userSchema = new mongoose.Schema({
         match: [/^\S+@\S+\.\S+$/, '올바른 이메일 형식을 입력하세요.'] // 이메일 형식 검증 추가
     },
     password: { type: String, required: true },
+    refreshToken: { type: String }, // Refresh Token 저장 필드 추가
     bookmarks: [ // 북마크 필드 추가
         {
             jobId: { type: mongoose.Schema.Types.ObjectId, ref: 'Job' }, // 참조하는 Job ID
             createdAt: { type: Date, default: Date.now }, // 북마크 저장 시간
         }
     ],
-});
+}, { timestamps: true }); // 생성 및 수정 시간 자동 저장
 
 // 비밀번호 해싱
 userSchema.pre('save', async function (next) {

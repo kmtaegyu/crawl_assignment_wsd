@@ -26,40 +26,81 @@ exports.register = async (req, res) => {
     }
 };
 
-
-
-
-
-// 로그인
+// 로그인 (Access Token + Refresh Token 발급)
 exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        // 사용자 검색
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(400).json({ success: false, message: '사용자를 찾을 수 없습니다.' });
         }
 
-        // 디버깅 로그
-        console.log("입력된 비밀번호:", password);
-        console.log("저장된 비밀번호:", user.password);
-
-        // 비밀번호 비교
         const isMatch = await bcrypt.compare(password, user.password);
-        console.log("비밀번호 비교 결과:", isMatch);
-
         if (!isMatch) {
             return res.status(401).json({ success: false, message: '비밀번호가 일치하지 않습니다.' });
         }
 
-        // JWT 발급
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        // Access Token 발급
+        const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-        res.status(200).json({ success: true, token });
+        // Refresh Token 발급
+        const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+
+        // Refresh Token 저장 (예: DB 또는 메모리)
+        user.refreshToken = refreshToken;
+        await user.save();
+
+        console.log("저장된 Refresh Token:", user.refreshToken); // 확인용 로그
+
+        res.status(200).json({
+            success: true,
+            accessToken,
+            refreshToken,
+        });
     } catch (err) {
         console.error('로그인 에러:', err.message);
         res.status(500).json({ success: false, message: '서버 에러가 발생했습니다.' });
+    }
+};
+
+// Refresh Token을 통한 Access Token 재발급
+exports.refreshToken = async (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(401).json({ success: false, message: 'Refresh token이 필요합니다.' });
+    }
+
+    try {
+        // Refresh Token 검증
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+
+        // 사용자 확인
+        const user = await User.findById(decoded.id);
+        if (!user || user.refreshToken !== refreshToken) {
+            return res.status(401).json({ success: false, message: '유효하지 않은 Refresh token입니다.' });
+        }
+
+        // 저장된 Refresh Token과 일치 여부 확인
+        if (user.refreshToken !== refreshToken) {
+            return res.status(401).json({ success: false, message: '유효하지 않은 Refresh token입니다.' });
+        }
+
+        // 새로운 Access Token 발급
+        const newAccessToken = jwt.sign(
+            { id: user._id }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: '1h' }
+        );
+
+        res.status(200).json({
+            success: true,
+            accessToken: newAccessToken,
+        });
+    } catch (err) {
+        console.error('Refresh Token 에러:', err.message);
+        res.status(403).json({ success: false, message: '유효하지 않은 Refresh token입니다.' });
     }
 };
 
